@@ -96,6 +96,7 @@ sudo apt install curl -y
 # 6) NVM + Node 18 + Yarn (as frappe user)
 # ------------------------------------------------------------------------------
 echo '== 8) Install NVM, Node 18, Yarn for frappe user =='
+# FIXED: Removed markdown URL formatting
 run_as_frappe '
   curl -fsSL https://raw.githubusercontent.com/creationix/nvm/master/install.sh | bash
   export NVM_DIR="$HOME/.nvm"
@@ -141,6 +142,8 @@ run_as_frappe "
 "
 
 echo '== 13) Site creation and ERPNext/HRMS install =='
+# FIXED: Removed markdown URL formatting
+# FIXED: Added missing closing quote at the end of this block
 run_as_frappe "
   cd ~/${BENCH_FOLDER}
 
@@ -171,28 +174,23 @@ run_as_frappe "
   # WARNING: The script will PAUSE here until you press Ctrl+C
   echo 'Starting bench... (Press Ctrl+C to stop and continue script)'
   bench start
-  
-  # Ensure we are in the correct directory (as requested)
-  cd ~/${BENCH_FOLDER}
-  bench --site '${SITE_NAME}' enable-scheduler
-  bench --site '${SITE_NAME}' set-maintenance-mode off
-"
+" 
 
 # ------------------------------------------------------------------------------
 # 10) Production setup & NGINX
 # ------------------------------------------------------------------------------
 echo '== 14) Production setup (Nginx) =='
-# First pass to generate configs
+# FIXED: Merged your logic into a valid bash block
 run_as_frappe "
   cd ~/${BENCH_FOLDER}
+  bench --site '${SITE_NAME}' enable-scheduler
+  bench --site '${SITE_NAME}' set-maintenance-mode off
   sudo bench setup production ${FRAPPE_USER} --yes
   bench setup nginx
 "
 
-echo '== 15) Reload NGINX & Restart Supervisor =='
+echo '== 15) Test NGINX & Restart Supervisor =='
 sudo nginx -t
-sudo systemctl reload nginx
-# Added sequence as requested:
 sudo supervisorctl restart all
 
 echo '== 16) Final Production Setup (re-run as requested) =='

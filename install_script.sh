@@ -152,13 +152,13 @@ run_as_frappe "
     bench drop-site '${SITE_NAME}' --force
   fi
 
-  # Create new site with DB and admin passwords
+  # Create new site
   bench new-site '${SITE_NAME}' \
     --db-root-username '${DB_ROOT_USER}' \
     --db-root-password '${DB_ROOT_PASS}' \
     --admin-password '${ERP_ADMIN_PASS}'
 
-  # Install ERPNext and HRMS apps
+  # Install Apps
   bench get-app erpnext --branch version-15 https://github.com/frappe/erpnext
   bench get-app hrms --branch version-15
 
@@ -166,6 +166,14 @@ run_as_frappe "
   bench --site '${SITE_NAME}' install-app hrms
 
   bench use '${SITE_NAME}'
+  
+  # === ADDED: bench start as requested ===
+  # WARNING: The script will PAUSE here until you press Ctrl+C
+  echo 'Starting bench... (Press Ctrl+C to stop and continue script)'
+  bench start
+  
+  # Ensure we are in the correct directory (as requested)
+  cd ~/${BENCH_FOLDER}
   bench --site '${SITE_NAME}' enable-scheduler
   bench --site '${SITE_NAME}' set-maintenance-mode off
 "
@@ -173,17 +181,26 @@ run_as_frappe "
 # ------------------------------------------------------------------------------
 # 10) Production setup & NGINX
 # ------------------------------------------------------------------------------
-echo '== 14) Production setup (Nginx + Supervisor) =='
-# IMPORTANT: This block fixes the "No such file" error by cd-ing into the bench folder first
+echo '== 14) Production setup (Nginx) =='
+# First pass to generate configs
 run_as_frappe "
   cd ~/${BENCH_FOLDER}
   sudo bench setup production ${FRAPPE_USER} --yes
   bench setup nginx
 "
 
-echo '== 15) Test and reload NGINX =='
+echo '== 15) Reload NGINX & Restart Supervisor =='
 sudo nginx -t
 sudo systemctl reload nginx
+# Added sequence as requested:
+sudo supervisorctl restart all
+
+echo '== 16) Final Production Setup (re-run as requested) =='
+# Runs "sudo bench setup production [frappe-user]" again at the end
+run_as_frappe "
+  cd ~/${BENCH_FOLDER}
+  sudo bench setup production ${FRAPPE_USER} --yes
+"
 
 # ------------------------------------------------------------------------------
 # 11) Final info

@@ -96,7 +96,6 @@ sudo apt install curl -y
 # 6) NVM + Node 18 + Yarn (as frappe user)
 # ------------------------------------------------------------------------------
 echo '== 8) Install NVM, Node 18, Yarn for frappe user =='
-# FIXED: Removed markdown URL formatting
 run_as_frappe '
   curl -fsSL https://raw.githubusercontent.com/creationix/nvm/master/install.sh | bash
   export NVM_DIR="$HOME/.nvm"
@@ -142,8 +141,6 @@ run_as_frappe "
 "
 
 echo '== 13) Site creation and ERPNext/HRMS install =='
-# FIXED: Removed markdown URL formatting
-# FIXED: Added missing closing quote at the end of this block
 run_as_frappe "
   cd ~/${BENCH_FOLDER}
 
@@ -163,10 +160,10 @@ run_as_frappe "
 
   # Install Apps
   bench get-app erpnext --branch version-15 https://github.com/frappe/erpnext
-  #bench get-app hrms --branch version-15
+  bench get-app hrms --branch version-15
 
   bench --site '${SITE_NAME}' install-app erpnext
-  #bench --site '${SITE_NAME}' install-app hrms
+  bench --site '${SITE_NAME}' install-app hrms
 
   bench use '${SITE_NAME}'
   
@@ -174,30 +171,38 @@ run_as_frappe "
   # WARNING: The script will PAUSE here until you press Ctrl+C
   echo 'Starting bench... (Press Ctrl+C to stop and continue script)'
   bench start
-" 
+"
 
 # ------------------------------------------------------------------------------
 # 10) Production setup & NGINX
 # ------------------------------------------------------------------------------
-echo '== 14) Production setup (Nginx) =='
-# FIXED: Merged your logic into a valid bash block
+echo '== 14) Production setup (Full Sequence) =='
+# We run these commands as 'frappe' user inside the bench folder
 run_as_frappe "
   cd ~/${BENCH_FOLDER}
+  
+  # Your requested pre-production sequence
   bench --site '${SITE_NAME}' enable-scheduler
   bench --site '${SITE_NAME}' set-maintenance-mode off
+  
+  # First setup production call
   sudo bench setup production ${FRAPPE_USER} --yes
-  bench setup nginx
+  
+  # Nginx setup
+  bench setup nginx --yes
 "
 
-echo '== 15) Test NGINX & Restart Supervisor =='
+echo '== 15) Reload Services (System Level) =='
+# System-level commands run as root
 sudo nginx -t
+sudo systemctl reload nginx
 sudo supervisorctl restart all
 
-echo '== 16) Final Production Setup (re-run as requested) =='
-# Runs "sudo bench setup production [frappe-user]" again at the end
+echo '== 16) Final Production Setup Call =='
+# Second setup production call (as requested)
 run_as_frappe "
   cd ~/${BENCH_FOLDER}
-  sudo bench setup production ${FRAPPE_USER} --yes
+  sudo bench setup production ${FRAPPE_USER} --yes --yes
 "
 
 # ------------------------------------------------------------------------------

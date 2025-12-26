@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# ERPNext v15 + HRMS Auto-Installer for Ubuntu 22.04 (Production)
+# ERPNext v15 + HRMS Auto-Installer for Ubuntu 22.04
 # ==============================================================================
 
 set -euo pipefail
@@ -8,11 +8,11 @@ set -euo pipefail
 # ====== Settings ======
 SITE_NAME="erpsite"
 FRAPPE_USER="frappe"
-FRAPPE_PASS="frappe"          # Linux user password
+FRAPPE_PASS="frappe"          
 DB_ROOT_USER="root"
-DB_ROOT_PASS="frappeDB"       # MariaDB root password
+DB_ROOT_PASS="frappeDB"       
 ERP_ADMIN_USER="Administrator"
-ERP_ADMIN_PASS="${SITE_NAME}" # ERPNext Administrator password
+ERP_ADMIN_PASS="${SITE_NAME}" 
 BENCH_FOLDER="frappe-bench"
 
 # ====== Helper: Run as frappe user with NVM loaded ======
@@ -36,7 +36,7 @@ fi
 echo '== 1) Ubuntu update / upgrade / autoremove =='
 sudo apt-get update -y && sudo apt-get upgrade -y && sudo apt-get autoremove -y
 
-# Remove conflicting system Node v12 (so we only use NVM Node 18) [web:251]
+# Remove conflicting system Node v12 (so we only use NVM Node 18)
 sudo apt-get remove -y nodejs npm libnode-dev || true
 sudo apt-get autoremove -y
 
@@ -173,10 +173,11 @@ run_as_frappe "
 # ------------------------------------------------------------------------------
 # 10) Production setup & NGINX
 # ------------------------------------------------------------------------------
-echo '== 14) Production setup (first pass) =='
+echo '== 14) Production setup (Nginx + Supervisor) =='
+# IMPORTANT: This block fixes the "No such file" error by cd-ing into the bench folder first
 run_as_frappe "
   cd ~/${BENCH_FOLDER}
-  sudo bench setup production ${FRAPPE_USER}
+  sudo bench setup production ${FRAPPE_USER} --yes
   bench setup nginx
 "
 
@@ -184,19 +185,8 @@ echo '== 15) Test and reload NGINX =='
 sudo nginx -t
 sudo systemctl reload nginx
 
-echo '== 16) Run sudo bench setup production frappe (as requested) =='
-sudo bench setup production frappe
-
 # ------------------------------------------------------------------------------
-# 11) Supervisor reload & restart
-# ------------------------------------------------------------------------------
-echo '== 17) Reload supervisor and restart all processes =='
-sudo service supervisor reload
-sudo supervisorctl update
-sudo supervisorctl restart all
-
-# ------------------------------------------------------------------------------
-# 12) Final info
+# 11) Final info
 # ------------------------------------------------------------------------------
 SERVER_IP="$(hostname -I | awk '{print $1}')"
 

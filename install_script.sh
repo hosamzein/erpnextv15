@@ -166,11 +166,6 @@ run_as_frappe "
   bench --site '${SITE_NAME}' install-app hrms
 
   bench use '${SITE_NAME}'
-  
-  # === ADDED: bench start as requested ===
-  # WARNING: The script will PAUSE here until you press Ctrl+C
-  echo 'Starting bench... (Press Ctrl+C to stop and continue script)'
-  bench start
 "
 
 # ------------------------------------------------------------------------------
@@ -181,7 +176,6 @@ echo '== 14) Production setup (Full Sequence) =='
 run_as_frappe "
   cd ~/${BENCH_FOLDER}
   
-  # Your requested pre-production sequence
   bench --site '${SITE_NAME}' enable-scheduler
   bench --site '${SITE_NAME}' set-maintenance-mode off
   

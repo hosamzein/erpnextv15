@@ -163,10 +163,10 @@ run_as_frappe "
 
   # Install Apps
   bench get-app erpnext --branch version-15 https://github.com/frappe/erpnext
-  bench get-app hrms --branch version-15
+  #bench get-app hrms --branch version-15
 
   bench --site '${SITE_NAME}' install-app erpnext
-  bench --site '${SITE_NAME}' install-app hrms
+  #bench --site '${SITE_NAME}' install-app hrms
 
   bench use '${SITE_NAME}'
   

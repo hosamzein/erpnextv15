@@ -2,49 +2,51 @@
 set -euo pipefail
 
 SITE_NAME="erpsite"
-FRAPPE_USER="frappe"
-BENCH_FOLDER="frappe-bench"
-BENCH_PATH="/home/${FRAPPE_USER}/${BENCH_FOLDER}"
 
-echo "== 0) Must run as root (sudo) =="
+FRAPPE_USER="frappe"
+FRAPPE_PASS="${FRAPPE_USER}"     # as requested
+
+DB_ROOT_USER="root"
+DB_ROOT_PASS="frappeDB"          # as requested
+
+ADMIN_USER="Administrator"
+ADMIN_PASS="${SITE_NAME}"        # keep your previous behavior
+
+BENCH_FOLDER="frappe-bench"
+
+echo "== Must run as root =="
 if [ "$(id -u)" -ne 0 ]; then
   echo "Run: sudo bash $0"
   exit 1
 fi
 
-echo "== 1) Update OS and cleanup =="
-apt-get update -y
-apt-get upgrade -y
-apt-get autoremove -y
+echo "== 1) Update system =="
+apt-get update -y && apt-get upgrade -y && apt-get autoremove -y
 
-echo "== 2) Create frappe user (sudo) if missing =="
+echo "== 2) Create frappe user (sudo) + set password =="
 if ! id -u "${FRAPPE_USER}" >/dev/null 2>&1; then
-  adduser "${FRAPPE_USER}"
+  adduser --disabled-password --gecos "" "${FRAPPE_USER}"
 fi
+echo "${FRAPPE_USER}:${FRAPPE_PASS}" | chpasswd
 usermod -aG sudo "${FRAPPE_USER}"
 
-echo "== 3) Install prerequisites (system) =="
+echo "== 3) Install prerequisites =="
 apt-get install -y \
   git software-properties-common \
   python3-dev python3-setuptools python3-pip python3-venv \
   mariadb-server mariadb-client \
   redis-server \
   nginx supervisor \
-  curl \
-  xvfb libfontconfig wkhtmltopdf \
-  npm
+  curl npm \
+  xvfb libfontconfig wkhtmltopdf
 
-echo "== 4) Yarn (global) =="
+echo "== 4) Yarn =="
 npm install -g yarn
 
-echo "== 5) Enable core services =="
+echo "== 5) Enable services =="
 systemctl enable --now mariadb redis-server nginx supervisor
 
-echo "== 6) MariaDB secure installation (interactive) =="
-echo "NOTE: This step is interactive."
-mysql_secure_installation
-
-echo "== 7) MariaDB utf8mb4 config =="
+echo "== 6) Configure MariaDB utf8mb4 =="
 cat >/etc/mysql/mariadb.conf.d/99-erpnext-utf8mb4.cnf <<'EOF'
 [mysqld]
 character-set-client-handshake = FALSE
@@ -55,6 +57,14 @@ collation-server = utf8mb4_unicode_ci
 default-character-set = utf8mb4
 EOF
 systemctl restart mariadb
+
+echo "== 7) Set MariaDB root password to ${DB_ROOT_PASS} =="
+# Set password for root@localhost (works if root uses unix_socket OR already has a password)
+mariadb -u root <<SQL
+FLUSH PRIVILEGES;
+ALTER USER '${DB_ROOT_USER}'@'localhost' IDENTIFIED BY '${DB_ROOT_PASS}';
+FLUSH PRIVILEGES;
+SQL
 
 echo "== 8) Install NVM + Node 18 for frappe user =="
 sudo -H -u "${FRAPPE_USER}" bash -lc '
@@ -70,52 +80,31 @@ sudo -H -u "${FRAPPE_USER}" bash -lc '
   yarn -v
 '
 
-echo "== 9) Ensure bench will be in frappe PATH (~/.local/bin) =="
-sudo -H -u "${FRAPPE_USER}" bash -lc '
-  set -e
-  # Ensure ~/.local/bin is on PATH (common location for pip --user scripts). [web:161]
-  if ! grep -q "HOME/.local/bin" ~/.bashrc 2>/dev/null; then
-    echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> ~/.bashrc
-  fi
-  source ~/.bashrc || true
-'
+echo "== 9) Install frappe-bench (pip3, your method) =="
+pip3 install --break-system-packages frappe-bench
 
-echo "== 10) Install frappe-bench as frappe user (NOT root) =="
-# Install as user so bench executable lives under /home/frappe/.local/bin (and is on PATH). [web:161]
-sudo -H -u "${FRAPPE_USER}" bash -lc '
-  set -e
-  python3 -m pip install --user --break-system-packages frappe-bench
-  source ~/.bashrc || true
-  which bench
-  bench --version
-'
-
-echo "== 11) bench init v15 =="
+echo "== 10) bench init v15 =="
 sudo -H -u "${FRAPPE_USER}" bash -lc "
   set -e
-  source ~/.bashrc || true
   cd ~
-  if [ -d ~/${BENCH_FOLDER} ]; then
-    echo 'Bench already exists, skipping init.'
-  else
-    bench init --frappe-branch version-15 ${BENCH_FOLDER}
-  fi
+  bench init --frappe-branch version-15 ${BENCH_FOLDER}
 "
 
-echo "== 12) Create site + install ERPNext + HRMS =="
+echo "== 11) Create site (non-interactive passwords) + install apps =="
+# bench new-site supports passing db root password + admin password. [web:199]
 sudo -H -u "${FRAPPE_USER}" bash -lc "
   set -e
-  source ~/.bashrc || true
   cd ~/${BENCH_FOLDER}
 
-  # Optional (your step): allow traverse permissions
-  sudo chmod -R o+rx /home/${FRAPPE_USER}
-
+  # Drop existing site if exists
   if bench list-sites 2>/dev/null | grep -qx '${SITE_NAME}'; then
     bench drop-site '${SITE_NAME}' --force
   fi
 
-  bench new-site '${SITE_NAME}'
+  bench new-site '${SITE_NAME}' \
+    --db-root-username '${DB_ROOT_USER}' \
+    --db-root-password '${DB_ROOT_PASS}' \
+    --admin-password '${ADMIN_PASS}'
 
   bench get-app erpnext --branch version-15 https://github.com/frappe/erpnext
   bench get-app hrms --branch version-15
@@ -128,22 +117,29 @@ sudo -H -u "${FRAPPE_USER}" bash -lc "
   bench --site '${SITE_NAME}' set-maintenance-mode off
 "
 
-echo "== 13) Production setup (Supervisor + NGINX) =="
-# 'bench setup production' is the documented production approach. [web:55]
+echo "== 12) Production setup (Supervisor + NGINX) =="
 sudo -H -u "${FRAPPE_USER}" bash -lc "
   set -e
-  source ~/.bashrc || true
   cd ~/${BENCH_FOLDER}
   sudo bench setup production ${FRAPPE_USER}
   bench setup nginx
 "
 
-echo "== 14) Reload NGINX + restart Supervisor =="
+echo "== 13) Reload NGINX + restart Supervisor =="
 nginx -t
 systemctl reload nginx
 supervisorctl restart all
 
-echo "== DONE =="
-echo "Open: http://<server-ip>/"
-echo "Login: Administrator"
-echo "Password: ${SITE_NAME}"
+SERVER_IP="$(hostname -I | awk '{print $1}')"
+
+echo "============================="
+echo "ERPNext installation finished"
+echo "URL: http://${SERVER_IP}/"
+echo "Linux user: ${FRAPPE_USER}"
+echo "Linux password: ${FRAPPE_PASS}"
+echo "MariaDB root user: ${DB_ROOT_USER}"
+echo "MariaDB root password: ${DB_ROOT_PASS}"
+echo "ERPNext user: ${ADMIN_USER}"
+echo "ERPNext password: ${ADMIN_PASS}"
+echo "Site name: ${SITE_NAME}"
+echo "============================="
